@@ -5,6 +5,7 @@
 import { client } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 import nodemailer from "nodemailer";
+import Stripe from "stripe";
 
 export const sendEmail = async (
   to: string,
@@ -549,6 +550,37 @@ export const sendEmailForFirstView = async (videoId: string) => {
         if (notification) return { status: 200, data: "Email sent" };
       }
     });
+  } catch (error) {
+    console.log("🔴 ERROR", error);
+    return { status: 500 };
+  }
+};
+
+const stripe = new Stripe(process.env.STRIPE_CLIENT_SECRET as string);
+export const completeSubcription = async (sessionId: string) => {
+  try {
+    const user = await currentUser();
+    if (!user) return { status: 404 };
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session) {
+      const customer = await client.user.update({
+        where: {
+          clerkid: user.id,
+        },
+        data: {
+          subscription: {
+            update: {
+              data: {
+                customerId: session.customer as string,
+                plan: "PRO",
+              },
+            },
+          },
+        },
+      });
+      if (customer) return { status: 200 };
+    }
+    return { status: 404 };
   } catch (error) {
     console.log("🔴 ERROR", error);
     return { status: 500 };
